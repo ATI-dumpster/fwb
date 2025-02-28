@@ -440,51 +440,55 @@ public class QsControlsView extends FrameLayout {
     }
 
     private void setupViewPager() {
-        if (mViewPager == null) return;
+        if (mViewPager == null || mWidgetViews == null) return;
+
         pagerAdapter = new PagerAdapter() {
             @Override
             public int getCount() {
                 return mWidgetViews.size();
             }
+
             @Override
             public boolean isViewFromObject(@NonNull View view, @NonNull Object object) {
                 return view == object;
             }
+
             @NonNull
             @Override
             public Object instantiateItem(@NonNull ViewGroup container, int position) {
                 View view = mWidgetViews.get(position);
+
+                // Ensure the view is removed from its previous parent before adding it
+                if (view.getParent() != null) {
+                    ((ViewGroup) view.getParent()).removeView(view);
+                }
+
                 container.addView(view);
                 return view;
             }
+
             @Override
             public void destroyItem(@NonNull ViewGroup container, int position, @NonNull Object object) {
                 container.removeView((View) object);
             }
         };
+
         mViewPager.setAdapter(pagerAdapter);
         mAccessPageIndicator.setupWithViewPager(mViewPager);
         mMediaPageIndicator.setupWithViewPager(mViewPager);
         mWidgetsPageIndicator.setupWithViewPager(mViewPager);
+
         mViewPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
             @Override
             public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {}
+
             @Override
             public void onPageSelected(int position) {
-                if (position == 0) {
-                    mMediaLayout.setVisibility(View.VISIBLE);
-                    mAccessLayout.setVisibility(View.GONE);
-                    mWidgetsLayout.setVisibility(View.GONE);
-                } else if (position == 1) {
-                    mMediaLayout.setVisibility(View.GONE);
-                    mAccessLayout.setVisibility(View.VISIBLE);
-                    mWidgetsLayout.setVisibility(View.GONE);
-                } else if (position == 2) {
-                    mMediaLayout.setVisibility(View.GONE);
-                    mAccessLayout.setVisibility(View.GONE);
-                    mWidgetsLayout.setVisibility(View.VISIBLE);
-                }
+                mMediaLayout.setVisibility(position == 0 ? View.VISIBLE : View.GONE);
+                mAccessLayout.setVisibility(position == 1 ? View.VISIBLE : View.GONE);
+                mWidgetsLayout.setVisibility(position == 2 ? View.VISIBLE : View.GONE);
             }
+
             @Override
             public void onPageScrollStateChanged(int state) {}
         });
