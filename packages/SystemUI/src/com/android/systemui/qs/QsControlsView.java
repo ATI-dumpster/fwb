@@ -244,19 +244,42 @@ public class QsControlsView extends FrameLayout {
         mFlashlightController.removeCallback(mFlashlightCallback);
     }
 
+    private void launchActivitySafely(Runnable action) {
+        try {
+            action.run();
+        } catch (Exception e) {
+            // Handle exception when user is locked or not running
+            if (e.getMessage() != null && 
+                (e.getMessage().contains("locked") || 
+                 e.getMessage().contains("not running"))) {
+                // Log the error but don't crash
+                android.util.Log.e("QsControlsView", 
+                    "Failed to launch activity: User locked or not running", e);
+            } else {
+                // For other exceptions, rethrow
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     private void setClickListeners() {
         mTorch.setOnClickListener(view -> toggleFlashlight());
-        mClockTimer.setOnClickListener(view -> mActivityLauncherUtils.launchTimer());
-        mCalculator.setOnClickListener(view -> mActivityLauncherUtils.launchCalculator());
-        mVoiceAssist.setOnClickListener(view -> mActivityLauncherUtils.launchVoiceAssistant());
-        mCamera.setOnClickListener(view -> mActivityLauncherUtils.launchCamera());
+        mClockTimer.setOnClickListener(view -> launchActivitySafely(() -> 
+            mActivityLauncherUtils.launchTimer()));
+        mCalculator.setOnClickListener(view -> launchActivitySafely(() -> 
+            mActivityLauncherUtils.launchCalculator()));
+        mVoiceAssist.setOnClickListener(view -> launchActivitySafely(() -> 
+            mActivityLauncherUtils.launchVoiceAssistant()));
+        mCamera.setOnClickListener(view -> launchActivitySafely(() -> 
+            mActivityLauncherUtils.launchCamera()));
         mSettingsButton.setOnClickListener(mSettingsOnClickListener);
         mRunningServiceButton.setOnClickListener(mSettingsOnClickListener);
         mInterfaceButton.setOnClickListener(mSettingsOnClickListener);
         mMediaPlayBtn.setOnClickListener(view -> performMediaAction(MediaAction.TOGGLE_PLAYBACK));
         mMediaPrevBtn.setOnClickListener(view -> performMediaAction(MediaAction.PLAY_PREVIOUS));
         mMediaNextBtn.setOnClickListener(view -> performMediaAction(MediaAction.PLAY_NEXT));
-        mMediaAlbumArtBg.setOnClickListener(view -> mActivityLauncherUtils.launchMediaPlayerApp());
+        mMediaAlbumArtBg.setOnClickListener(view -> launchActivitySafely(() -> 
+            mActivityLauncherUtils.launchMediaPlayerApp()));
         ((LaunchableImageView) mMediaAlbumArtBg).setOnLongClickListener(view -> {
             showMediaOutputDialog();
             return true;
@@ -525,16 +548,18 @@ public class QsControlsView extends FrameLayout {
     private final View.OnClickListener mSettingsOnClickListener = new View.OnClickListener() {
         @Override
         public void onClick(View v) {
-	        if (mFalsingManager != null && mFalsingManager.isFalseTap(FalsingManager.LOW_PENALTY)) {
-		        return;
-	        }
-	        if (v == mSettingsButton) {
-		        mActivityLauncherUtils.startSettingsActivity();
-	        } else if (v == mRunningServiceButton) {
-		        mActivityLauncherUtils.launchSettingsComponent("com.android.settings.Settings$DevRunningServicesActivity");
-	        } else if (v == mInterfaceButton) {
-		        mActivityLauncherUtils.launchSettingsComponent(PERSONALIZATIONS_ACTIVITY);
-	        }
+            if (mFalsingManager != null && mFalsingManager.isFalseTap(FalsingManager.LOW_PENALTY)) {
+                return;
+            }
+            if (v == mSettingsButton) {
+                launchActivitySafely(() -> mActivityLauncherUtils.startSettingsActivity());
+            } else if (v == mRunningServiceButton) {
+                launchActivitySafely(() -> mActivityLauncherUtils.launchSettingsComponent(
+                    "com.android.settings.Settings$DevRunningServicesActivity"));
+            } else if (v == mInterfaceButton) {
+                launchActivitySafely(() -> mActivityLauncherUtils.launchSettingsComponent(
+                    PERSONALIZATIONS_ACTIVITY));
+            }
         }
     };
 
@@ -619,12 +644,24 @@ public class QsControlsView extends FrameLayout {
     }
 
     private void showMediaOutputDialog() {
-        String packageName = mActivityLauncherUtils.getActiveMediaPackage();
-        if (!packageName.isEmpty()) {
-            Intent intent = new Intent();
-            intent.setAction("android.settings.panel.action.MEDIA_OUTPUT");
-            intent.putExtra("android.provider.extra.PACKAGE_NAME", packageName);
-            mActivityStarter.startActivity(intent, true);
+        try {
+            String packageName = mActivityLauncherUtils.getActiveMediaPackage();
+            if (!packageName.isEmpty()) {
+                Intent intent = new Intent();
+                intent.setAction("android.settings.panel.action.MEDIA_OUTPUT");
+                intent.putExtra("android.provider.extra.PACKAGE_NAME", packageName);
+                mActivityStarter.startActivity(intent, true);
+            }
+        } catch (Exception e) {
+            // Handle exception when user is locked or not running
+            if (e.getMessage() != null && 
+                (e.getMessage().contains("locked") || 
+                 e.getMessage().contains("not running"))) {
+                android.util.Log.e("QsControlsView", 
+                    "Failed to show media output dialog: User locked or not running", e);
+            } else {
+                throw new RuntimeException(e);
+            }
         }
     }
     
