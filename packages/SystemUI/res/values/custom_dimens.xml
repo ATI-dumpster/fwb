@@ -158,4 +158,6 @@
     <dimen name="qs_controls_slider_icon_margin_bottom">16dp</dimen>
     <dimen name="qs_controls_page_indicator_size">6dp</dimen>
     <dimen name="qs_controls_page_indicator_margin">2dp</dimen>
+    <dimen name="qs_controls_translucent_alpha">0.275</dimen>
+    <dimen name="qs_slider_swipe_threshold_dp">40dp</dimen>
 </resources>

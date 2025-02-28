@@ -98,7 +98,7 @@ class BrightnessSlider(context: Context, attrs: AttributeSet? = null) :
     }
 
     override fun onUserInteractionEnd() {}
-    
+
     override fun onLongPress() {
         toggleBrightnessMode()
     }
@@ -115,11 +115,17 @@ class BrightnessSlider(context: Context, attrs: AttributeSet? = null) :
         setBrightnessFromSystem()
     }
 
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        mContentResolver.unregisterContentObserver(mBrightnessObserver)
+        displayManager.unregisterDisplayListener(mDisplayListener)
+    }
+
     override fun updateSliderPaint() {
         super.updateSliderPaint()
         updateBrightnessIcon()
     }
-    
+
     private fun setBrightnessFromSystem() {
         val newProgress = (getCurrentBrightness() * 100).roundToInt()
         setSliderProgress(newProgress)
@@ -166,7 +172,7 @@ class BrightnessSlider(context: Context, attrs: AttributeSet? = null) :
             getPercentage(value.toDouble(), GAMMA_SPACE_MIN.toFloat(), GAMMA_SPACE_MAX.toFloat())
         } ?: 0.0
     }
-    
+
     private fun getLinearBrightnessValue(): Float {
         val info: BrightnessInfo? = context.getDisplay().getBrightnessInfo()
         val maxProgress = 100
@@ -186,7 +192,7 @@ class BrightnessSlider(context: Context, attrs: AttributeSet? = null) :
             else -> (value - min) / (max - min)
         }
     }
-    
+
     private fun setBrightnessFromUser() {
         val displayId = context.getDisplayId()
         val brightnessValue = getLinearBrightnessValue()

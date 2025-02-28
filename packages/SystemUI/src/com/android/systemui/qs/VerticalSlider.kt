@@ -25,6 +25,8 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.os.Handler
+import android.os.UserHandle
+import android.provider.Settings
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -46,7 +48,9 @@ open class VerticalSlider(context: Context, attrs: AttributeSet? = null) : CardV
 
     private val listeners: MutableList<UserInteractionListener> = mutableListOf()
 
-    private val longPressTimeout = ViewConfiguration.getLongPressTimeout()
+    private val horizontalSwipeThreshold = context.resources.getDimensionPixelSize(R.dimen.qs_slider_swipe_threshold_dp)
+
+    private val longPressTimeout = 800
     private val longPressHandler = Handler()
     private val longPressRunnable: Runnable = Runnable {
         doLongPressAction()
@@ -84,7 +88,7 @@ open class VerticalSlider(context: Context, attrs: AttributeSet? = null) : CardV
     private val SLIDER_HAPTICS_TIMEOUT: Long = 100
 
     private val isNightMode: Boolean
-        get() = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        get() = true // on default qs we always use dark mode
 
     init {
         setOnTouchListener { view, event ->
@@ -97,20 +101,25 @@ open class VerticalSlider(context: Context, attrs: AttributeSet? = null) : CardV
                     lastY = event.y
                     lastProgress = progress
                     requestDisallowInterceptTouchEventFromParentsAndRoot(true)
-                    true
+                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val deltaX = abs(lastX - event.x)
                     val deltaY = abs(lastY - event.y)
-                    if (isLongPress(event, deltaX, deltaY)) {
-                        isLongPressDetected = true
-                        doLongPressAction()
+                    if (deltaX > horizontalSwipeThreshold) {
+                        requestDisallowInterceptTouchEventFromParentsAndRoot(false)
                     } else {
-                        cancelLongPressDetection()
-                        val deltaY = lastY - event.y
-                        val progressDelta = (deltaY * 100 / measuredHeight.toFloat()).toInt()
-                        progress = (lastProgress + progressDelta).coerceIn(0, 100)
-                        notifyListenersUserSwipe()
+                        requestDisallowInterceptTouchEventFromParentsAndRoot(true)
+                        if (isLongPress(event, deltaX, deltaY)) {
+                            isLongPressDetected = true
+                            doLongPressAction()
+                            return@setOnTouchListener true
+                        } else {
+                            cancelLongPressDetection()
+                            val progressDelta = ((lastY - event.y) * 100 / measuredHeight.toFloat()).toInt()
+                            progress = (lastProgress + progressDelta).coerceIn(0, 100)
+                            notifyListenersUserSwipe()
+                        }
                     }
                     true
                 }
@@ -119,13 +128,11 @@ open class VerticalSlider(context: Context, attrs: AttributeSet? = null) : CardV
                     cancelLongPressDetection()
                     true
                 }
-                else -> {
-                    false
-                }
+                else -> false
             }
         }
         backgroundTintList = ColorStateList.valueOf(
-            context.getResources().getColor(if (isNightMode) R.color.qs_controls_container_bg_color_dark 
+            context.getResources().getColor(if (isNightMode) R.color.qs_controls_container_bg_color_dark
             else R.color.qs_controls_container_bg_color_light)
         )
         radius = cornerRadius
@@ -149,6 +156,7 @@ open class VerticalSlider(context: Context, attrs: AttributeSet? = null) : CardV
     private fun doLongPressAction() {
         if (isLongPressDetected && !actionPerformed) {
             listeners.forEach { it.onLongPress() }
+            VibrationUtils.triggerVibration(context, 4)
             actionPerformed = true
             isLongPressDetected = false
         }
@@ -233,34 +241,49 @@ open class VerticalSlider(context: Context, attrs: AttributeSet? = null) : CardV
         canvas.drawPath(progressRectPath, progressPaint)
     }
 
+    fun qsPaneStyle(): Int {
+        return Settings.System.getIntForUser(context.contentResolver, 
+            Settings.System.QS_PANEL_STYLE, 0, UserHandle.USER_CURRENT)
+    }
+
+    fun translucentQsStyle(): Boolean {
+        val translucentStyles = listOf(1, 2, 3)
+        return translucentStyles.contains(qsPaneStyle())
+    }
+
     protected open fun updateSliderPaint() {
-        backgroundTintList = ColorStateList.valueOf(
-            context.getResources().getColor(if (isNightMode) R.color.qs_controls_container_bg_color_dark 
-            else R.color.qs_controls_container_bg_color_light)
+        val progressAlpha = if (translucentQsStyle()) {
+            context.resources.getFloat(R.dimen.qs_controls_translucent_alpha)
+        } else 1f
+        val backgroundAlpha = if (translucentQsStyle()) 0.8f else 1f
+        progressPaint.color = context.getColor(
+            if (isNightMode) R.color.qs_controls_active_color_dark 
+            else R.color.qs_controls_active_color_light
         )
-        layoutPaint.color = context.getResources().getColor(if (isNightMode) R.color.qs_controls_container_bg_color_dark else R.color.qs_controls_container_bg_color_light)
-        progressPaint.color = context.getResources().getColor(if (isNightMode) R.color.qs_controls_active_color_dark else R.color.qs_controls_active_color_light)
+        progressPaint.alpha = (progressAlpha * 255).toInt()
+        layoutPaint.color = context.getColor(
+            if (isNightMode) R.color.qs_controls_container_bg_color_dark 
+            else R.color.qs_controls_container_bg_color_light
+        )
+        layoutPaint.alpha = (backgroundAlpha * 255).toInt()
         invalidate()
     }
 
     fun updateIconTint(view: ImageView?) {
         val emptyThreshold = 20 // 20% of 100
         val isEmpty = progress <= emptyThreshold
-        val iconColor = if (isEmpty) {
-            if (isNightMode)
-                R.color.qs_controls_bg_color_light
-            else
-                R.color.qs_controls_bg_color_dark
-        } else {
-            if (isNightMode)
-                R.color.qs_controls_active_color_light
-            else
-                R.color.qs_controls_active_color_dark
+        val iconColorRes = when {
+            isEmpty -> if (isNightMode) R.color.qs_controls_bg_color_light 
+                else R.color.qs_controls_bg_color_dark
+            translucentQsStyle() -> if (isNightMode) R.color.qs_controls_active_color_dark 
+                else R.color.qs_controls_active_color_light
+            else -> if (isNightMode) R.color.qs_controls_active_color_light 
+                else R.color.qs_controls_active_color_dark
         }
-        val color = context.getResources().getColor(iconColor)
+        val color = context.getResources().getColor(iconColorRes)
         view?.setColorFilter(color, PorterDuff.Mode.SRC_IN)
     }
-    
+
     fun setSliderProgress(sliderProgress: Int) {
         progress = sliderProgress
     }
@@ -268,10 +291,17 @@ open class VerticalSlider(context: Context, attrs: AttributeSet? = null) : CardV
     protected open fun updateProgressRect() {
         val calculatedProgress = progress / 100f
         val newTop = (1 - calculatedProgress) * measuredHeight
-        if (abs(newTop - progressRect.top) > measuredHeight * threshold) {
-            progressRect.top = newTop
+        val progressDelta = newTop - progressRect.top
+        val smoothingFactor = when {
+            progress < 10 || progress > 90 -> 0.05f
+            else -> 0.1f
+        }
+        if (abs(progressDelta) > measuredHeight * threshold) {
+            progressRect.top += progressDelta * smoothingFactor
+            postInvalidateOnAnimation()
         } else {
-            progressRect.top += (newTop - progressRect.top) * 0.1f
+            progressRect.top = newTop
+            invalidate()
         }
         invalidate()
     }
